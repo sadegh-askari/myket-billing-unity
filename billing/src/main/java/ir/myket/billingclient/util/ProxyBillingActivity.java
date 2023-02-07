@@ -12,14 +12,12 @@ public class ProxyBillingActivity extends Activity {
     public static final String BILLING_RECEIVER_KEY = "billing_receiver";
     public static final String PURCHASE_RESULT = "purchase_result";
     private static final int REQUEST_CODE = 100;
-
-    private final IABLogger iabLogger = new IABLogger();
     private ResultReceiver purchaseBillingReceiver;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        iabLogger.logDebug("Launching Store billing flow");
+        IABLogger.logEntering(getClass().getSimpleName(), "Launching Store billing flow");
         try {
             purchaseBillingReceiver = (ResultReceiver) getIntent().getParcelableExtra(BILLING_RECEIVER_KEY);
             if (getIntent().getParcelableExtra(RESPONSE_BUY_INTENT) instanceof PendingIntent) {
@@ -31,12 +29,12 @@ public class ProxyBillingActivity extends Activity {
                 Intent intent = getIntent().getParcelableExtra(RESPONSE_BUY_INTENT);
                 startActivityForResult(intent, REQUEST_CODE);
             } else {
-                iabLogger.logWarn("parcelableExtra RESPONSE_BUY_INTENT is not pendingInstall or intent");
+                IABLogger.logError("parcelableExtra RESPONSE_BUY_INTENT is not pendingInstall or intent");
                 purchaseBillingReceiver.send(RESULT_FIRST_USER, getReceiverResult(null));
                 finish();
             }
         } catch (Throwable e) {
-            iabLogger.logWarn("Got exception while trying to start a purchase flow: " + e);
+            IABLogger.logError("Got exception while trying to start a purchase flow: " + e);
             purchaseBillingReceiver.send(RESULT_FIRST_USER, getReceiverResult(null));
             finish();
         }
@@ -46,7 +44,7 @@ public class ProxyBillingActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_CODE) {
-            iabLogger.logWarn("Got purchases updated result with resultCode " + resultCode);
+            IABLogger.logDebug("Got exception while trying to start a purchase flow: ");
             purchaseBillingReceiver.send(resultCode, getReceiverResult(data));
             finish();
         }

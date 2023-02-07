@@ -69,9 +69,8 @@ public class BroadcastIAB extends IAB {
     private WeakReference<BillingSupportCommunication> billingSupportWeakReference;
     private WeakReference<Activity> launchPurchaseActivityWeakReference;
 
-    public BroadcastIAB(Context context, IABLogger logger, String marketId, String bindAddress,
-                        String mSignatureBase64) {
-        super(logger, marketId, bindAddress, mSignatureBase64);
+    public BroadcastIAB(Context context, String marketId, String bindAddress, String mSignatureBase64) {
+        super(marketId, bindAddress, mSignatureBase64);
         this.context = context;
         this.signatureBase64 = mSignatureBase64 != null ? mSignatureBase64 : "secureBroadcastKey";
     }
@@ -130,15 +129,15 @@ public class BroadcastIAB extends IAB {
 
     private void createIABReceiver() {
         iabReceiver = intent -> {
-            logger.logDebug("new message received in broadcast");
+            IABLogger.logDebug("new message received in broadcast");
             String intentAction = intent.getAction();
             if (intentAction == null) {
-                logger.logError("action is null");
+                IABLogger.logError("action is null");
                 return;
             }
 
             if (!signatureBase64.equals(intent.getStringExtra(SECURE_KEY))) {
-                logger.logError("broadcastSecure key is not valid");
+                IABLogger.logError("broadcastSecure key is not valid");
                 return;
             }
 
@@ -160,7 +159,7 @@ public class BroadcastIAB extends IAB {
                     break;
 
                 case receiveBillingSupport:
-                    logger.logDebug("billingSupport message received in broadcast");
+                    IABLogger.logDebug("billingSupport message received in broadcast");
                     handleBillingSupport(intent.getExtras());
                     break;
 
@@ -190,7 +189,7 @@ public class BroadcastIAB extends IAB {
     private void handleLaunchPurchaseResponse(Bundle extras) {
         int response = getResponseCodeFromBundle(extras);
         if (response != BILLING_RESPONSE_RESULT_OK) {
-            logger.logError("Unable to buy item, Error response: " + getResponseDesc(response));
+            IABLogger.logError("Unable to buy item, Error response: " + getResponseDesc(response));
             flagEndAsync();
             IabResult result = new IabResult(response, "Unable to buy item");
             if (mPurchaseListener != null) mPurchaseListener.onIabPurchaseFinished(result, null);
@@ -198,7 +197,7 @@ public class BroadcastIAB extends IAB {
         }
 
         Intent purchaseIntent = extras.getParcelable(RESPONSE_BUY_INTENT);
-        logger.logDebug("Launching buy intent");
+        IABLogger.logDebug("Launching buy intent");
 
         Activity activity = safeGetFromWeakReference(launchPurchaseActivityWeakReference);
         if (activity == null) {
@@ -285,12 +284,12 @@ public class BroadcastIAB extends IAB {
         String token = itemInfo.getToken();
         String sku = itemInfo.getSku();
         if (token == null || token.equals("")) {
-            logger.logError("Can't consume " + sku + ". No token.");
+            IABLogger.logError("Can't consume " + sku + ". No token.");
             throw new IabException(IABHELPER_MISSING_TOKEN, "PurchaseInfo is missing token for sku: "
                     + sku + " " + itemInfo);
         }
 
-        logger.logDebug("Consuming sku: " + sku + ", token: " + token);
+        IABLogger.logDebug("Consuming sku: " + sku + ", token: " + token);
 
         Intent intent = getNewIntentForBroadcast();
         intent.setAction(getAction(consumeAction));
@@ -304,9 +303,9 @@ public class BroadcastIAB extends IAB {
         try {
             consumePurchaseLatch.await(60, TimeUnit.SECONDS);
             if (consumePurchaseResponse == BILLING_RESPONSE_RESULT_OK) {
-                logger.logDebug("Successfully consumed sku: " + sku);
+                IABLogger.logDebug("Successfully consumed sku: " + sku);
             } else {
-                logger.logDebug("Error consuming consuming sku " + sku + ". " +
+                IABLogger.logDebug("Error consuming consuming sku " + sku + ". " +
                         getResponseDesc(consumePurchaseResponse));
                 throw new IabException(consumePurchaseResponse, "Error consuming sku " + sku);
             }
@@ -335,7 +334,7 @@ public class BroadcastIAB extends IAB {
             return skuDetailBundle;
 
         } catch (InterruptedException e) {
-            logger.logWarn("error happened while getting sku detail for " + packageName);
+            IABLogger.logWarn("error happened while getting sku detail for " + packageName);
         }
 
         return new Bundle();
@@ -361,7 +360,7 @@ public class BroadcastIAB extends IAB {
             return getPurchaseBundle;
 
         } catch (InterruptedException e) {
-            logger.logWarn("error happened while getting sku detail for " + packageName);
+            IABLogger.logWarn("error happened while getting sku detail for " + packageName);
         }
 
         return new Bundle();
