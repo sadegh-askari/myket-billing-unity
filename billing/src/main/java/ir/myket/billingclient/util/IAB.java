@@ -23,11 +23,13 @@ import android.os.ResultReceiver;
 
 import org.json.JSONException;
 
+import ir.myket.billingclient.BuildConfig;
 import ir.myket.billingclient.IabHelper;
 import ir.myket.billingclient.util.communication.BillingSupportCommunication;
 
 public abstract class IAB {
-
+    public final static int SDK_VERSION = BuildConfig.SDK_VERSION;
+    public final static String KEY_SDK_VERSION = "SDK_VERSION";
     private final String mSignatureBase64;
     // Are subscriptions supported?
     public boolean mSubscriptionsSupported = false;

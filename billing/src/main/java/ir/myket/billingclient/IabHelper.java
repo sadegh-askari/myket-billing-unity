@@ -17,6 +17,7 @@ package ir.myket.billingclient;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
@@ -30,6 +31,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import ir.myket.billingclient.util.BroadcastIAB;
+import ir.myket.billingclient.util.DialogActivity;
 import ir.myket.billingclient.util.IAB;
 import ir.myket.billingclient.util.IABLogger;
 import ir.myket.billingclient.util.IabException;
@@ -206,7 +208,12 @@ public class IabHelper {
         }
         IABLogger.logDebug("Starting in-app billing setup.");
 
-        ServiceIAB serviceIAB = new ServiceIAB(getMarketId(), getBindAddress(), mSignatureBase64);
+        if (isMyketNotInstalled()) {
+            listener.onIabSetupFinished(new IabResult(BILLING_RESPONSE_RESULT_OK, "Myket Not Installed"));
+            return;
+        }
+
+        ServiceIAB serviceIAB = new ServiceIAB(getMarketId(mContext), getBindAddress(), mSignatureBase64);
 
         OnServiceConnectListener connectListener = new OnServiceConnectListener() {
             @Override
@@ -227,7 +234,7 @@ public class IabHelper {
     private void startAlternativeScenario(final OnIabSetupFinishedListener listener) {
         OnBroadCastConnectListener broadCastConnectListener = () -> checkBillingSupported(listener);
 
-        BroadcastIAB broadcastIAB = new BroadcastIAB(mContext, getMarketId(), getBindAddress(), mSignatureBase64);
+        BroadcastIAB broadcastIAB = new BroadcastIAB(mContext, getMarketId(mContext), getBindAddress(), mSignatureBase64);
         boolean canConnectToReceiver = broadcastIAB.connect(mContext, broadCastConnectListener);
         IABLogger.logDebug("canConnectToReceiver = " + canConnectToReceiver);
         if (canConnectToReceiver) {
@@ -239,11 +246,11 @@ public class IabHelper {
         }
     }
 
-    private String getMarketId() {
+    public static String getMarketId(Context context) {
         ApplicationInfo applicationInfo;
         try {
-            applicationInfo = mContext.getPackageManager()
-                    .getApplicationInfo(mContext.getPackageName(), PackageManager.GET_META_DATA);
+            applicationInfo = context.getPackageManager()
+                    .getApplicationInfo(context.getPackageName(), PackageManager.GET_META_DATA);
             Bundle bundle = applicationInfo.metaData;
             if (bundle != null) {
                 return bundle.getString(META_DATA_MARKET_ID);
@@ -271,13 +278,15 @@ public class IabHelper {
         }
     }
 
-    private boolean isMarketInstalled(String marketId) {
+    private boolean isMyketNotInstalled() {
+        if (!"ir.mservices.market".equalsIgnoreCase(getMarketId(mContext))) {
+            return false;
+        }
         try {
-            return mContext.getPackageManager().getApplicationInfo(marketId, 0) != null;
+            mContext.getPackageManager().getApplicationInfo("ir.mservices.market", 0);
+            return false;
         } catch (PackageManager.NameNotFoundException e) {
-            return false;
-        } catch (Exception e) {
-            return false;
+            return true;
         }
     }
 
@@ -376,12 +385,22 @@ public class IabHelper {
      */
     public void launchPurchaseFlow(Activity act, String sku, String itemType,
                                    OnIabPurchaseFinishedListener listener, String extraData) {
+        if (isMyketNotInstalled()) {
+            Intent intent = new Intent(act, DialogActivity.class);
+            intent.putExtra("SKU", sku);
+            act.startActivity(intent);
+            listener.onIabPurchaseFinished(
+                    new IabResult(BILLING_RESPONSE_RESULT_BILLING_UNAVAILABLE, "Myket not installed"),
+                    null);
+            return;
+        }
         checkNotDisposed();
         checkSetupDone("launchPurchaseFlow");
         iabConnection.launchPurchaseFlow(mContext, act, sku, itemType, listener, extraData);
     }
 
-    public Inventory queryInventory(boolean querySkuDetails, List<String> moreSkus) throws IabException {
+    public Inventory queryInventory(boolean querySkuDetails, List<String> moreSkus) throws
+            IabException {
         return queryInventory(querySkuDetails, moreSkus, null);
     }
 
@@ -443,7 +462,9 @@ public class IabHelper {
         final Handler handler = new Handler();
         checkNotDisposed();
         checkSetupDone("queryInventory");
-        iabConnection.flagStartAsync("refresh inventory");
+        if (iabConnection != null) {
+            iabConnection.flagStartAsync("refresh inventory");
+        }
         (new Thread(new Runnable() {
             public void run() {
                 IabResult result = new IabResult(BILLING_RESPONSE_RESULT_OK, "Inventory refresh successful.");
@@ -453,9 +474,9 @@ public class IabHelper {
                 } catch (IabException ex) {
                     result = ex.getResult();
                 }
-
-                iabConnection.flagEndAsync();
-
+                if (iabConnection != null) {
+                    iabConnection.flagEndAsync();
+                }
                 final IabResult result_f = result;
                 final Inventory inv_f = inv;
                 if (!mDisposed && listener != null) {
@@ -528,6 +549,9 @@ public class IabHelper {
 
     // Checks that setup was done; if not, throws an exception.
     private void checkSetupDone(String operation) {
+        if (isMyketNotInstalled()) {
+            return;
+        }
         if (iabConnection == null || !iabConnection.mSetupDone) {
             IABLogger.logError("Illegal state for operation (" + operation + "): IAB helper is not set up.");
             throw new IllegalStateException(
@@ -539,6 +563,11 @@ public class IabHelper {
         // Query purchases
         IABLogger.logDebug("Querying owned items, item type: " + itemType);
         IABLogger.logDebug("Package name: " + mContext.getPackageName());
+        if (isMyketNotInstalled()) {
+            IABLogger.logDebug("GetPurchases: Myket not installed, return empty list");
+            return 0;
+        }
+
         boolean verificationFailed = false;
         String continueToken = null;
 
@@ -600,6 +629,11 @@ public class IabHelper {
     int querySkuDetails(String itemType, Inventory inv, List<String> moreSkus)
             throws RemoteException, JSONException {
         IABLogger.logDebug("Querying SKU details.");
+        if (isMyketNotInstalled()) {
+            IABLogger.logDebug("SkuDetails: Myket not installed, return empty list");
+            return 0;
+        }
+
         ArrayList<String> skuList = new ArrayList<String>();
         skuList.addAll(inv.getAllOwnedSkus(itemType));
         if (moreSkus != null) {
