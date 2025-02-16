@@ -395,8 +395,21 @@ public class IabHelper {
             return;
         }
         checkNotDisposed();
-        checkSetupDone("launchPurchaseFlow");
-        iabConnection.launchPurchaseFlow(mContext, act, sku, itemType, listener, extraData);
+
+        if (iabConnection == null || !iabConnection.mSetupDone) {
+            IABLogger.logDebug("launchPurchaseFlow: Setup not complete!");
+            startSetup(result -> {
+                if (result.isSuccess()) {
+                    IABLogger.logDebug("launchPurchaseFlow: Setup finished done.");
+                    iabConnection.launchPurchaseFlow(mContext, act, sku, itemType, listener, extraData);
+                } else {
+                    IABLogger.logError("launchPurchaseFlow: Finish setup with an error: " + result);
+                }
+            });
+        } else {
+            checkSetupDone("launchPurchaseFlow");
+            iabConnection.launchPurchaseFlow(mContext, act, sku, itemType, listener, extraData);
+        }
     }
 
     public Inventory queryInventory(boolean querySkuDetails, List<String> moreSkus) throws
