@@ -257,7 +257,9 @@ public class MyketIABPlugin extends MyketIABPluginBase
         runSafelyOnUiThread(new Runnable() {
             @Override
             public void run() {
-                mHelper.consumeAsync(confirmedPurchases, MyketIABPlugin.this);
+                for (Purchase purchase : confirmedPurchases) {
+                    mHelper.consumeAsync(purchase, MyketIABPlugin.this);
+                }
             }
         }, "consumePurchaseFailed");
     }

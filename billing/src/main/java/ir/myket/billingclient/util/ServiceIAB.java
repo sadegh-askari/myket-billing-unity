@@ -59,6 +59,7 @@ public class ServiceIAB extends IAB {
             public void onServiceDisconnected(final ComponentName name) {
                 IABLogger.logDebug("Billing service disconnected.");
                 mService = null;
+                listener.disconnect();
             }
 
             @Override
@@ -122,8 +123,13 @@ public class ServiceIAB extends IAB {
             // check for v3 subscriptions support
             response = mService.isBillingSupported(apiVersion, packageName, ITEM_TYPE_SUBS);
             if (response == BILLING_RESPONSE_RESULT_OK) {
-                IABLogger.logDebug("Subscriptions AVAILABLE.");
-                mSubscriptionsSupported = true;
+                if ("ir.mservices.market".equalsIgnoreCase(marketId)) {
+                    IABLogger.logDebug("Myket not supported subscription type");
+                    mSubscriptionsSupported = false;
+                } else {
+                    IABLogger.logDebug("Subscriptions AVAILABLE.");
+                    mSubscriptionsSupported = true;
+                }
             } else {
                 IABLogger.logDebug("Subscriptions NOT AVAILABLE. Response: " + response);
             }
@@ -141,6 +147,12 @@ public class ServiceIAB extends IAB {
     @Override
     public void launchPurchaseFlow(Context mContext, Activity act, String sku, String itemType,
                                    IabHelper.OnIabPurchaseFinishedListener listener, String extraData) {
+
+        if (isAsyncOperationInProgress()) {
+            IABLogger.logWarn("Can't start async operation launchPurchaseFlow because another async operation is in progress.");
+            listener.onIabPurchaseFinished(new IabResult(IabHelper.IABHELPER_ERROR_BASE, "Can't start async operation launchPurchaseFlow because another async operation is in progress."), null);
+            return;
+        }
 
         flagStartAsync("launchPurchaseFlow");
         IabResult result;
@@ -308,6 +320,11 @@ public class ServiceIAB extends IAB {
         IABLogger.logDebug("Ending async operation: " + mAsyncOperation);
         mAsyncOperation = "";
         mAsyncInProgress = false;
+    }
+
+    @Override
+    public boolean isAsyncOperationInProgress() {
+        return mAsyncInProgress;
     }
 
     @Override

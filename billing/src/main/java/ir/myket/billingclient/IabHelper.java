@@ -220,7 +220,9 @@ public class IabHelper {
         // If already set up, can't do it again.
         checkNotDisposed();
         if (iabConnection != null) {
-            throw new IllegalStateException("IAB helper is already set up.");
+            IABLogger.logWarn("IAB helper is already set up.");
+            listener.onIabSetupFinished(new IabResult(IABHELPER_ERROR_BASE, "IAB helper is already set up."));
+            return;
         }
         IABLogger.logDebug("Starting in-app billing setup.");
 
@@ -240,6 +242,11 @@ public class IabHelper {
             @Override
             public void couldNotConnect() {
                 startAlternativeScenario(listener);
+            }
+
+            @Override
+            public void disconnect() {
+                iabConnection = null;
             }
         };
 
@@ -342,8 +349,6 @@ public class IabHelper {
      * Returns whether subscriptions are supported.
      */
     public boolean subscriptionsSupported() {
-        checkNotDisposed();
-
         if (iabConnection != null) {
             return iabConnection.mSubscriptionsSupported;
         } else {
@@ -404,6 +409,10 @@ public class IabHelper {
                     iabConnection.launchPurchaseFlow(mContext, act, sku, itemType, listener, extraData);
                 } else {
                     IABLogger.logError("launchPurchaseFlow: Finish setup with an error: " + result);
+                    listener.onIabPurchaseFinished(
+                            new IabResult(BILLING_RESPONSE_RESULT_BILLING_UNAVAILABLE,
+                                    "launchPurchaseFlow: Finish setup with an error: " + result),
+                            null);
                 }
             });
         } else {
@@ -432,7 +441,6 @@ public class IabHelper {
      */
     public Inventory queryInventory(boolean querySkuDetails, List<String> moreItemSkus,
                                     List<String> moreSubsSkus) throws IabException {
-        checkNotDisposed();
         checkSetupDone("queryInventory");
 
         try {
@@ -446,6 +454,20 @@ public class IabHelper {
                 r = querySkuDetails(ITEM_TYPE_INAPP, inv, moreItemSkus);
                 if (r != BILLING_RESPONSE_RESULT_OK) {
                     throw new IabException(r, "Error refreshing inventory (querying prices of items).");
+                }
+            }
+
+            if (subscriptionsSupported()) {
+                r = queryPurchases(inv, ITEM_TYPE_SUBS);
+                if (r != BILLING_RESPONSE_RESULT_OK) {
+                    throw new IabException(r, "Error refreshing inventory (querying owned subscriptions).");
+                }
+
+                if (querySkuDetails) {
+                    r = querySkuDetails(ITEM_TYPE_SUBS, inv, moreItemSkus);
+                    if (r != BILLING_RESPONSE_RESULT_OK) {
+                        throw new IabException(r, "Error refreshing inventory (querying prices of subscriptions).");
+                    }
                 }
             }
 
@@ -476,6 +498,11 @@ public class IabHelper {
         checkNotDisposed();
         checkSetupDone("queryInventory");
         if (iabConnection != null) {
+            if (iabConnection.isAsyncOperationInProgress()) {
+                IABLogger.logWarn("Can't start async operation queryInventory because another async operation is in progress.");
+                listener.onQueryInventoryFinished(new IabResult(IABHELPER_ERROR_BASE, "Can't start async operation queryInventory because another async operation is in progress."), null);
+                return;
+            }
             iabConnection.flagStartAsync("refresh inventory");
         }
         (new Thread(new Runnable() {
@@ -521,7 +548,6 @@ public class IabHelper {
      * @throws IabException if there is a problem during consumption.
      */
     void consume(Purchase itemInfo) throws IabException {
-        checkNotDisposed();
         checkSetupDone("consume");
 
         if (!itemInfo.getItemType().equals(ITEM_TYPE_INAPP)) {
@@ -545,19 +571,7 @@ public class IabHelper {
         checkSetupDone("consume");
         List<Purchase> purchases = new ArrayList<Purchase>();
         purchases.add(purchase);
-        consumeAsyncInternal(purchases, listener, null);
-    }
-
-    /**
-     * Same as {@link #consumeAsync(Purchase, OnConsumeFinishedListener)}, but for multiple items at once.
-     *
-     * @param purchases The list of PurchaseInfo objects representing the purchases to consume.
-     * @param listener  The listener to notify when the consumption operation finishes.
-     */
-    public void consumeAsync(List<Purchase> purchases, OnConsumeMultiFinishedListener listener) {
-        checkNotDisposed();
-        checkSetupDone("consume");
-        consumeAsyncInternal(purchases, null, listener);
+        consumeAsyncInternal(purchases, listener);
     }
 
     // Checks that setup was done; if not, throws an exception.
@@ -572,7 +586,10 @@ public class IabHelper {
         }
     }
 
-    int queryPurchases(Inventory inv, String itemType) throws JSONException, RemoteException {
+    int queryPurchases(Inventory inv, String itemType) throws JSONException, RemoteException, IabException {
+        if (mContext == null) {
+            throw new IabException(new IabResult(IABHELPER_ERROR_BASE, "mContext is null!"));
+        }
         // Query purchases
         IABLogger.logDebug("Querying owned items, item type: " + itemType);
         IABLogger.logDebug("Package name: " + mContext.getPackageName());
@@ -640,7 +657,10 @@ public class IabHelper {
     }
 
     int querySkuDetails(String itemType, Inventory inv, List<String> moreSkus)
-            throws RemoteException, JSONException {
+            throws RemoteException, JSONException, IabException {
+        if (mContext == null) {
+            throw new IabException(new IabResult(IABHELPER_ERROR_BASE, "mContext is null!"));
+        }
         IABLogger.logDebug("Querying SKU details.");
         if (isMyketNotInstalled()) {
             IABLogger.logDebug("SkuDetails: Myket not installed, return empty list");
@@ -691,10 +711,17 @@ public class IabHelper {
     }
 
     void consumeAsyncInternal(final List<Purchase> purchases,
-                              final OnConsumeFinishedListener singleListener,
-                              final OnConsumeMultiFinishedListener multiListener) {
+                              final OnConsumeFinishedListener singleListener) {
         final Handler handler = new Handler();
-        iabConnection.flagStartAsync("consume");
+        if (iabConnection != null) {
+            if (iabConnection.isAsyncOperationInProgress()) {
+                IABLogger.logWarn("Can't start async operation consume because another async operation is in progress.");
+                singleListener.onConsumeFinished(null, new IabResult(IABHELPER_ERROR_BASE, "Can't start async operation consume because another async operation is in progress."));
+                return;
+            }
+            iabConnection.flagStartAsync("consume");
+        }
+
         (new Thread(new Runnable() {
             public void run() {
                 final List<IabResult> results = new ArrayList<IabResult>();
@@ -716,13 +743,6 @@ public class IabHelper {
                         }
                     });
                 }
-                if (!mDisposed && multiListener != null) {
-                    handler.post(new Runnable() {
-                        public void run() {
-                            multiListener.onConsumeMultiFinished(purchases, results);
-                        }
-                    });
-                }
             }
         })).start();
     }
@@ -732,6 +752,14 @@ public class IabHelper {
         final Handler handler = new Handler();
         checkNotDisposed();
         checkSetupDone("querySkuDetails");
+        if (iabConnection != null) {
+            if (iabConnection.isAsyncOperationInProgress()) {
+                IABLogger.logWarn("Can't start async operation querySkuDetails because another async operation is in progress.");
+                listener.onQuerySkuDetailsFinished(new IabResult(IABHELPER_ERROR_BASE, "Can't start async operation querySkuDetails because another async operation is in progress."), null);
+                return;
+            }
+            iabConnection.flagStartAsync("querySkuDetails");
+        }
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -780,6 +808,14 @@ public class IabHelper {
         final Handler handler = new Handler();
         checkNotDisposed();
         checkSetupDone("queryPurchases");
+        if (iabConnection != null) {
+            if (iabConnection.isAsyncOperationInProgress()) {
+                IABLogger.logWarn("Can't start async operation queryPurchases because another async operation is in progress.");
+                listener.onQueryPurchasesFinished(new IabResult(IABHELPER_ERROR_BASE, "Can't start async operation queryPurchases because another async operation is in progress."), null);
+                return;
+            }
+            iabConnection.flagStartAsync("queryPurchases");
+        }
         new Thread(new Runnable() {
             @Override
             public void run() {
