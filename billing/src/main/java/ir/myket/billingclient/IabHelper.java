@@ -779,6 +779,9 @@ public class IabHelper {
                                         "Error refreshing SkuDetails (querying prices of subscriptions).");
                             }
                         }
+                        if (iabConnection != null) {
+                            iabConnection.flagEndAsync();
+                        }
                     } catch (RemoteException e) {
                         throw new IabException(IABHELPER_REMOTE_EXCEPTION,
                                 "Remote exception while refreshing SkuDetails.",
@@ -789,6 +792,9 @@ public class IabHelper {
                     }
                 } catch (IabException ex) {
                     result = ex.getResult();
+                    if (iabConnection != null) {
+                        iabConnection.flagEndAsync();
+                    }
                 }
                 final IabResult result_f = result;
                 final Inventory inv_f = inv;
@@ -834,6 +840,9 @@ public class IabHelper {
                                         "Error refreshing inventory (querying owned subscriptions).");
                             }
                         }
+                        if (iabConnection != null) {
+                            iabConnection.flagEndAsync();
+                        }
                     } catch (RemoteException e) {
                         throw new IabException(IABHELPER_REMOTE_EXCEPTION,
                                 "Remote exception while refreshing Purchases.",
@@ -844,6 +853,9 @@ public class IabHelper {
                     }
                 } catch (IabException ex) {
                     result = ex.getResult();
+                    if (iabConnection != null) {
+                        iabConnection.flagEndAsync();
+                    }
                 }
                 final IabResult result_f = result;
                 final Inventory inv_f = inv;
