@@ -299,6 +299,17 @@ public class IabHelper {
 
     private void checkBillingSupported(final OnIabSetupFinishedListener listener) {
         String packageName = mContext.getPackageName();
+
+        if (iabConnection == null) {
+            if (listener == null) {
+                return;
+            }
+
+            listener.onIabSetupFinished(new IabResult(BILLING_RESPONSE_RESULT_BILLING_UNAVAILABLE,
+                    "iap connection is null."));
+            return;
+        }
+
         iabConnection.isBillingSupported(3, packageName, new BillingSupportCommunication() {
             @Override
             public void onBillingSupportResult(int response) {
